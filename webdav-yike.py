@@ -3,12 +3,13 @@
 
 import sys, os
 
-# sys.path.append(os.environ["PYLIB"])
-# sys.path.append(os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
-from pybaiduphoto import API
 
+# sys.path.append(os.environ["PYLIB"])
+# sys.path.insert(0,os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
 # from LogConfig import LogConfig
 # LogConfig.set_logtoScreen("debug")
+
+from pybaiduphoto import API
 
 
 import logging

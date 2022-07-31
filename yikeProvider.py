@@ -238,6 +238,7 @@ class Dir_root(DAVCollection):
 class Dir_Album(DAVCollection):
     def __init__(self, path, environ, dirName):
         self.provider = environ["wsgidav.provider"]
+        self.path = path
         super().__init__(path, environ)
         delimiter = self.provider.getDelimiter()
         if delimiter in dirName:
@@ -313,6 +314,18 @@ class Dir_Album(DAVCollection):
 
     # def get_display_name(self) -> str:
     #     return self.album.getName()
+
+    def handle_move(self, dest_path):
+        selfpath = self.path if self.path[-1] != "/" else self.path[:-1]
+        destpath = dest_path if dest_path[-1] != "/" else dest_path[:-1]
+        selfpaths = selfpath.split("/")
+        destpaths = destpath.split("/")
+        assert len(selfpaths) == len(destpaths)
+        oldName = selfpaths[-1]
+        newName = destpaths[-1]
+        if newName != oldName:
+            self.album.rename(newName)
+        return True
 
 
 class Dir_All(DAVCollection):
