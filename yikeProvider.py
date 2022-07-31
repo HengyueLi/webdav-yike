@@ -312,8 +312,8 @@ class Dir_Album(DAVCollection):
             path=pathjoin(self.path, name), environ=self.environ, func_endUpload=fun
         )
 
-    # def get_display_name(self) -> str:
-    #     return self.album.getName()
+    def get_display_name(self) -> str:
+        return self.album.getName()
 
     def handle_move(self, dest_path):
         selfpath = self.path if self.path[-1] != "/" else self.path[:-1]
@@ -406,7 +406,7 @@ class baiduphoto(DAVProvider):
             return self.api.getOnlineItem_ByInfo(info=info)
 
     def get_AllDirName(self):
-        return "All (latest {})".format(int(self.config["ITEM_NUM_MAX_IN_DIR"]))
+        return "All(latest{})".format(int(self.config["ITEM_NUM_MAX_IN_DIR"]))
 
     def get_resource_inst(self, path, environ):
         """Return info dictionary for path.
@@ -482,6 +482,6 @@ class baiduphoto(DAVProvider):
         #     albs = self.api.getAlbumList()['items']
         #     return Directory(subNameList=[alb.getName() for alb in albs],path=path,environ=environ)
         else:
-            print("here error")
-        print("here end")
+            print("else error")
+        print("if end error")
         return None

@@ -31,7 +31,7 @@ sysConfig_default = {
     "ALBUM_ITEM_DELETE_WITH_ORIGIN": False,
     "ITEM_NUM_MAX_IN_DIR": 999,
     "ITEM_NUM_MAX_IN_ALBUM": 999,
-    "DELIMITER": "_^_",
+    "DELIMITER": "@",
 }
 
 

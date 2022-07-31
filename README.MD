@@ -23,7 +23,7 @@ python webdav-yike.py cj.json
 
 # 说明
 - 目前处于非常初级的阶段。`/Albums`中可以区分相册。`/All`中显示所有的文件。因为数量可能是非常大的，默认文件夹中只读取前999个文件。根据自己的网络可以做一些调整，详细参考下面的`API参数`配置。
-- 该项目主要依赖[wsgidav](https://github.com/mar10/wsgidav)和[baiduphoto](https://github.com/HengyueLi/baiduphoto)。欢迎共同学习。 
+- 该项目主要依赖[wsgidav](https://github.com/mar10/wsgidav)和[pybaiduphoto](https://github.com/HengyueLi/baiduphoto)。欢迎共同学习。
 
 
 # API参数
@@ -33,7 +33,7 @@ python webdav-yike.py cj.json
 "ALBUM_ITEM_DELETE_WITH_ORIGIN": False,
 "ITEM_NUM_MAX_IN_DIR": 999,
 "ITEM_NUM_MAX_IN_ALBUM": 999,
-"DELIMITER": "_^_",
+"DELIMITER": "@",
 ```
 修改参数的方法是（例如）
 ```
