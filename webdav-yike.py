@@ -5,8 +5,9 @@ import sys, os
 
 
 # sys.path.append(os.environ["PYLIB"])
-# sys.path.insert(0,os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
+# sys.path.insert(0, os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
 # from LogConfig import LogConfig
+#
 # LogConfig.set_logtoScreen("debug")
 
 from pybaiduphoto import API
@@ -31,6 +32,7 @@ sysConfig_default = {
     "ALBUM_ITEM_DELETE_WITH_ORIGIN": False,
     "ITEM_NUM_MAX_IN_DIR": 999,
     "ITEM_NUM_MAX_IN_ALBUM": 999,
+    "ITEM_NUM_MAX_IN_PERSON": 999,
     "DELIMITER": "@",
 }
 
