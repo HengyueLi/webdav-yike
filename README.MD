@@ -33,6 +33,7 @@ python webdav-yike.py cj.json
 "ALBUM_ITEM_DELETE_WITH_ORIGIN": False,
 "ITEM_NUM_MAX_IN_DIR": 999,
 "ITEM_NUM_MAX_IN_ALBUM": 999,
+"ITEM_NUM_MAX_IN_PERSON": 999,
 "DELIMITER": "@",
 ```
 修改参数的方法是（例如）
