@@ -7,8 +7,8 @@ import sys, os
 # sys.path.append(os.environ["PYLIB"])
 # sys.path.insert(0, os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
 # from LogConfig import LogConfig
-#
 # LogConfig.set_logtoScreen("debug")
+
 
 from pybaiduphoto import API
 
@@ -103,7 +103,7 @@ parser.add_argument(
 
 
 args = vars(parser.parse_args())
-logging.debug(args)
+logging.debug("args input:=" + str(args))
 
 
 if args["configcookies"] is not None:

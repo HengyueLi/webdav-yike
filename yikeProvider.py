@@ -178,6 +178,7 @@ class onlineItem_New(DAVNonCollection):
 
 
 class onlineItem(DAVNonCollection):
+    # /All/fileName
     def __init__(self, path, environ, item):
         self.provider = environ["wsgidav.provider"]
         super().__init__(path, environ)
@@ -225,16 +226,6 @@ class onlineItem(DAVNonCollection):
         """
         return False
 
-    @staticmethod
-    def getIDByShownName(provider, shownName):
-        ID = provider.pathCache.getItemIDByName(shownName)
-        if ID is None:
-            logging.warning(
-                "cannot map showName [{}] to ID, cache missing".format(shownName)
-            )
-        else:
-            return ID
-
     def delete(self):
         res = self.item.delete()
 
@@ -244,28 +235,22 @@ class onlineItem(DAVNonCollection):
         return True
 
 
-class onlineItemInAlbum(onlineItem):
-    def __init__(self, path, environ, item, album):
+class onlineItemInAAlbum(onlineItem):
+    # /TypeMarker/dirName/fileName
+    def __init__(self, path, environ, item, AbsAlbumType, aalb):
         super().__init__(path=path, environ=environ, item=item)
-        self.alb = album
+        self.alb = aalb
+        self.AbsAlbumType = AbsAlbumType
 
     def delete(self):
-        res = self.alb.deleteItem(
-            items=self.item,
-            isOrigin=self.provider.config["ALBUM_ITEM_DELETE_WITH_ORIGIN"],
-        )
-        logging.debug(res)
-
-    def handle_delete(self):
-        _logger.debug(f"handle_delete...")
-        self.delete()
-        return True
-
-
-class onlineItemInPerson(onlineItem):
-    def __init__(self, path, environ, item, person):
-        super().__init__(path=path, environ=environ, item=item)
-        self.person = person
+        if self.AbsAlbumType == "Album":
+            res = self.alb.deleteItem(
+                items=self.item,
+                isOrigin=self.provider.config["ALBUM_ITEM_DELETE_WITH_ORIGIN"],
+            )
+            logging.debug(res)
+        else:
+            pass
 
 
 class Dir_root(DAVCollection):
@@ -278,127 +263,10 @@ class Dir_root(DAVCollection):
         This method MUST be implemented.
         """
         return [
-            "Albums",
+            "Album",
             self.provider.get_AllDirName(),  # All (latest x)
             "Person",
         ]
-
-
-class Dir_Alum_Abstract(DAVCollection):
-    @abstractmethod
-    def defineParameters(self):
-        return {
-            "maxNum": -1,  # max num of items in dir
-            "marker": "abc",  # album,person,...
-        }
-
-    def __init__(self, path, environ, apiObj):
-        self.provider = environ["wsgidav.provider"]
-        self.apiObj = apiObj
-        self.path = path
-        self.environ = environ
-        super().__init__(path, environ)
-
-    @staticmethod
-    def getShownNameByID(provider, apiObj):
-        dirName = apiObj.getName() + provider.getDelimiter() + apiObj.getID()
-        return dirName
-
-    @staticmethod
-    def getIDByShownName(provider, shownName):
-        delimiter = provider.getDelimiter()
-        if delimiter not in shownName:
-            logging.warning("cannot pharse id from shownName = {}".format(shownName))
-            return
-        else:
-            return shownName.split(delimiter)[-1]
-
-    def get_member_names(self):
-        para = self.defineParameters()
-        # ---
-        # l = self.provider.pathCache.getItemListInAbsAlbum(
-        #     AbsAlbumType=para['marker'], ID= self.apiObj.getID())
-        l = self.provider.pathCache.getItemListInAAlbum(
-            DirType=para["marker"], ID=self.apiObj.getID()
-        )
-        if l is None:
-            items = self.apiObj.getAllItems(max=para["maxNum"])
-            for item in items:
-                self.provider.pathCache.cacheItem(item=item)
-        else:
-            items = []
-            for itemID in l:
-                info = self.provider.pathCache.getItemInfo(itemID=itemID)
-                if info is None:
-                    logging.error(
-                        "need to request item by itemID and insert into cache"
-                    )
-                else:
-                    item = self.provider.api.getOnlineItem_ByInfo(info=info)
-                items.append(item)
-        names = [item.getName() for item in items]
-        return names
-
-    def handle_move(self, dest_path):
-        # 只用来重命名，不改变位置
-        print(6666)
-        selfpath = self.path if self.path[-1] != "/" else self.path[:-1]
-        destpath = dest_path if dest_path[-1] != "/" else dest_path[:-1]
-        selfpaths = selfpath.split("/")
-        destpaths = destpath.split("/")
-        assert len(selfpaths) == len(destpaths)
-        oldName = selfpaths[-1]
-        newName = destpaths[-1]
-        if newName != oldName:
-            self.apiObj.rename(newName)
-        return True
-
-
-class Dir_Album(Dir_Alum_Abstract):
-    def defineParameters(self):
-        return {
-            "maxNum": self.provider.config["ITEM_NUM_MAX_IN_ALBUM"],
-            "marker": "Album",
-        }
-
-    def delete(self):
-        self.apiObj.delete(isWithItems=self.provider.config["ALBUM_DELETE_WITHITEM"])
-        # self.provider.pathCache.deleteAlbumIfExist(albID=self.apiObj.getID())
-        self.provider.pathCache.deleteAAlbumIfExist(
-            DirType="Album", ID=self.apiObj.getID()
-        )
-
-    def handle_delete(self):
-        _logger.debug(f"handle_delete...")
-        self.delete()
-        return True
-
-    def create_empty_resource(self, name):
-        def fun(item, api):
-            alb = self.apiObj  # self.provider.getAlumb_byCacheOrRequest(ID=self.albID)
-            alb.append(item)
-            self.provider.pathCache.cacheItem(item)
-            self.provider.pathCache.setAlbumList(albID=self.albID, itemID=item.getID())
-
-        return onlineItem_New(
-            path=pathjoin(self.path, name), environ=self.environ, func_endUpload=fun
-        )
-
-    def get_display_name(self) -> str:
-        return self.apiObj.getName()
-
-    # def handle_move(self, dest_path):
-    #     # 只用来重命名，不改变位置
-    #     selfpath = self.path if self.path[-1] != "/" else self.path[:-1]
-    #     destpath = dest_path if dest_path[-1] != "/" else dest_path[:-1]
-    #     selfpaths = selfpath.split("/")
-    #     destpaths = destpath.split("/")
-    #     assert len(selfpaths) == len(destpaths)
-    #     oldName = selfpaths[-1]
-    #     newName = destpaths[-1]
-    #     if newName != oldName:
-    #         self.apiObj.rename(newName)
-    #     return True
 
 
 class Dir_All(DAVCollection):
@@ -417,62 +285,153 @@ class Dir_All(DAVCollection):
         return names
 
 
-class Dir_Albums(DAVCollection):
-    # /Albums
-
-    def __init__(self, path, environ):
+class Dir_TypeMarker_s(DAVCollection):
+    # /TypeMarker
+    def __init__(self, path, environ, TypeMarker):
         self.provider = environ["wsgidav.provider"]
         self.path = path
+        self.TypeMarker = TypeMarker
         super().__init__(path, environ)
 
+    def get_AbsAlbum_List(self):
+        if self.TypeMarker == "Album":
+            return self.provider.api.getAlbumList_All()
+        elif self.TypeMarker == "Person":
+            return self.provider.api.getAllPersonList()
+        else:
+            logging.error("undefined AbsAlbum type = {}".format(self.TypeMarker))
+
     def get_member_names(self):
-        names = []
         delimiter = self.provider.getDelimiter()
-        albs = self.provider.api.getAlbumList_All()
-        for alb in albs:
-            # self.provider.pathCache.cacheAlbum(alb)
-            self.provider.pathCache.cache_apiObj(TypeMarker="Album", apiObj=alb)
-            dirName = alb.getName() + delimiter + alb.getID()
-            names.append(dirName)
+        albList = self.get_AbsAlbum_List()
+        names = []
+        for alb in albList:
+            self.provider.pathCache.cache_apiObj(TypeMarker=self.TypeMarker, apiObj=alb)
+            showName = Dir_Alum_Abstract.getShownNameByObj(self.provider, alb)
+            names.append(showName)
         return names
 
     def create_collection(self, name):
         # create new alb
         assert "/" not in name
+        assert self.TypeMarker == "Album"
+        assert self.provider.getDelimiter() not in name
         alb = self.provider.api.createNewAlbum(Name=name)
-        shownName = Dir_Album.getShownNameByID(self.provider, alb)
+        self.provider.pathCache.cache_apiObj(TypeMarker=self.TypeMarker, apiObj=alb)
+        shownName = Dir_Alum_Abstract.getShownNameByObj(self.provider, alb)
         return self.provider.get_resource_inst(
             self.path + shownName + "/", self.environ
         )
 
 
-class Dir_Person(Dir_Alum_Abstract):
-    # /Person/person
-
-    def defineParameters(self):
-        return {
-            "maxNum": self.provider.config["ITEM_NUM_MAX_IN_PERSON"],
-            "marker": "Person",
-        }
-
-
-class Dir_Persons(DAVCollection):
-    # /Person
-    def __init__(self, path, environ):
+class Dir_Alum_Abstract(DAVCollection):
+    # /TypeMarker/dirName
+    def __init__(self, path, environ, TypeMarker, apiObj):
+        self.TypeMarker = TypeMarker
         self.provider = environ["wsgidav.provider"]
+        self.apiObj = apiObj
         self.path = path
+        self.environ = environ
         super().__init__(path, environ)
 
+    @staticmethod
+    def getShownNameByObj(provider, apiObj):
+        dirName = apiObj.getName() + provider.getDelimiter() + apiObj.getID()
+        return dirName
+
+    @staticmethod
+    def getIDByShownName(provider, shownName):
+        delimiter = provider.getDelimiter()
+        if delimiter not in shownName:
+            logging.warning("cannot pharse id from shownName = {}".format(shownName))
+            return
+        else:
+            return shownName.split(delimiter)[-1]
+
+    @staticmethod
+    def cacheItemsInSelfDir_byRequest(provider, TypeMarker, apiObj):
+        maxNum = provider.config["ITEM_NUM_MAX_IN_" + TypeMarker.upper()]
+        items = apiObj.getAllItems(max=maxNum)
+        for item in items:
+            provider.pathCache.cacheItem(item=item)
+        return items
+
     def get_member_names(self):
-        delimiter = self.provider.getDelimiter()
-        persons = self.provider.api.getAllPersonList()
-        names = []
-        for p in persons:
-            # self.provider.pathCache.cachePerson(p)
-            self.provider.pathCache.cache_apiObj(TypeMarker="Person", apiObj=p)
-            showName = Dir_Person.getShownNameByID(self.provider, p)
-            names.append(showName)
+        maxNum = self.provider.config["ITEM_NUM_MAX_IN_" + self.TypeMarker.upper()]
+        l = self.provider.pathCache.getItemListInAAlbum(
+            DirType=self.TypeMarker, ID=self.apiObj.getID()
+        )
+        if l is None:
+            items = self.cacheItemsInSelfDir_byRequest(
+                provider=self.provider, TypeMarker=self.TypeMarker, apiObj=self.apiObj
+            )
+            # items = self.apiObj.getAllItems(max=maxNum)
+            # for item in items:
+            #     self.provider.pathCache.cacheItem(item=item)
+        else:
+            items = []
+            for itemID in l:
+                info = self.provider.pathCache.getItemInfo(itemID=itemID)
+                if info is None:
+                    logging.error(
+                        "need to request item by itemID and insert into cache"
+                    )
+                else:
+                    item = self.provider.api.getOnlineItem_ByInfo(info=info)
+                items.append(item)
+        names = [item.getName() for item in items]
         return names
+
+    def handle_move(self, dest_path):
+        # 只用来重命名，不改变位置
+        assert self.provider.getDelimiter() not in dest_path
+        selfpath = self.path if self.path[-1] != "/" else self.path[:-1]
+        destpath = dest_path if dest_path[-1] != "/" else dest_path[:-1]
+        selfpaths = selfpath.split("/")
+        destpaths = destpath.split("/")
+        assert len(selfpaths) == len(destpaths)
+        oldName = selfpaths[-1]
+        newName = destpaths[-1]
+        if newName != oldName:
+            self.apiObj.rename(newName)
+        return True
+
+    def delete(self):
+        assert self.TypeMarker == "Album"
+        self.apiObj.delete(isWithItems=self.provider.config["ALBUM_DELETE_WITHITEM"])
+        self.provider.pathCache.deleteAAlbumIfExist(
+            DirType="Album", ID=self.apiObj.getID()
+        )
+
+    def handle_delete(self):
+        assert self.TypeMarker == "Album"
+        _logger.debug(f"handle_delete...")
+        self.delete()
+        return True
+
+    def create_empty_resource(self, name):
+
+        assert self.TypeMarker == "Album"
+
+        def fun(item, api):
+            alb = self.apiObj  # self.provider.getAlumb_byCacheOrRequest(ID=self.albID)
+            alb.append(item)
+            self.provider.pathCache.cacheItem(item)
+            # self.provider.pathCache.setAlbumList(albID=self.albID, itemID=item.getID())
+            self.provider.pathCache.appendItemIntoAAlbum(
+                DirType=self.TypeMarker,
+                ID=alb.getID(),
+                itemID=item.getID(),
+                checkTableExist=True,
+            )
+
+        return onlineItem_New(
+            path=pathjoin(self.path, name), environ=self.environ, func_endUpload=fun
+        )
+
+    def get_display_name(self) -> str:
+        assert self.TypeMarker == "Album"
+        return self.apiObj.getName()
 
 
 class baiduphoto(DAVProvider):
@@ -485,40 +444,127 @@ class baiduphoto(DAVProvider):
     def getDelimiter(self):
         return self.config["DELIMITER"]
 
-    # def getAAlbumb_byCacheOrRequest(self,TypeMarker,ID):
-    #     info = self.pathCache.getapiObjInfo(TypeMarker=TypeMarker,ID=ID)
-    #     if info is None:
-    #         alb = self.api.getAlbum_ByID(ID=ID)
-    #         # self.pathCache.cacheAlbum(alb)
-    #         self.pathCache.cache_apiObj(TypeMarker='Album',apiObj=alb)
-    #         return alb
-    #     else:
-    #         return self.api.getAlbum_ByInfo(info=info)
-
-    def getAlumb_byCacheOrRequest(self, ID):
-        # info = self.pathCache.getAlbumInfo(albID=ID)
-        info = self.pathCache.getapiObjInfo(TypeMarker="Album", ID=ID)
+    def get_apiObj_byCacheOrRequest(self, TypeMarker, ID):
+        fun_ListAll = {
+            "itemInfo": self.api.getAllItems,
+            "Album": self.api.getAlbumList_All,
+            "Person": self.api.getAllPersonList,
+        }.get(TypeMarker, None)
+        fun_Req = {
+            "Album": self.api.getAlbum_ByID,
+        }.get(TypeMarker, None)
+        # --- load info into object
+        InfoloadFunc = {
+            "itemInfo": self.api.getOnlineItem_ByInfo,
+            "Album": self.api.getAlbum_ByInfo,
+            "Person": self.api.getPerson_ByInfo,
+        }.get(TypeMarker, None)
+        # --------------------------------------------------
+        info = self.pathCache.getapiObjInfo(TypeMarker=TypeMarker, ID=ID)
         if info is None:
-            alb = self.api.getAlbum_ByID(ID=ID)
-            # self.pathCache.cacheAlbum(alb)
-            self.pathCache.cache_apiObj(TypeMarker="Album", apiObj=alb)
-            return alb
-        else:
-            return self.api.getAlbum_ByInfo(info=info)
+            logging.debug("apiObj [{},{}] not in cache".format(TypeMarker, ID))
+            if fun_Req is not None:
+                logging.debug("Viable to request info to get apiObj")
+                apiObj = fun_Req(ID=ID)
+                self.pathCache.cache_apiObj(TypeMarker=TypeMarker, apiObj=apiObj)
+                return apiObj
+            else:
+                logging.warning(
+                    "need to implement function to request [{}] info by ID".format(
+                        TypeMarker
+                    )
+                )
+                logging.warning(
+                    "As a compromise, load all [{}] info. This would be slow!".format(
+                        TypeMarker
+                    )
+                )
+                apiObjs = fun_ListAll()
+                for o in apiObjs:
+                    self.pathCache.cache_apiObj(TypeMarker=TypeMarker, apiObj=o)
+                info = self.pathCache.getapiObjInfo(TypeMarker=TypeMarker, ID=ID)
+                if info is None:
+                    logging.error(
+                        "({},{}) is not found. Consider increase NUM_MAX. Or it does not exist at all".format(
+                            TypeMarker, ID
+                        )
+                    )
+                    return None
+        if InfoloadFunc is None:
+            logging.error("TypeMarker = {} not support in get_apiObj_byCacheOrRequest")
+        return InfoloadFunc(info)
 
-    def getPerson_byCacheOrRequest(self, ID):
-        info = self.pathCache.getapiObjInfo(TypeMarker="Person", ID=ID)
-        if info is None:
-            logging.warning("need to implement request person info by personID")
-        else:
-            return self.api.getPerson_ByInfo(info=info)
-
-    def getItem_byNameWithCache(self, Name):
+    # def getItem_byNameWithCache(self, Name , paths):
+    #     ID = self.pathCache.getItemIDByName(Name)
+    #     if ID is None:
+    #         logging.warning("need to implement request id by filename")
+    #         logging.warning("As a compromise, reload all items, this is slow!")
+    #         items = self.api.getAllItems()
+    #         for item in items:
+    #             self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+    #         ID = self.pathCache.getItemIDByName(Name)
+    #         if ID is None:
+    #             logging.error(
+    #                 "item name {} not found. Consider increasing ITEM_NUM_MAX_IN_DIR?"
+    #             )
+    #             return None
+    #     return self.getItem_byCache(ID)
+    def getItem_byNameWithCache(self, Name, paths):
         ID = self.pathCache.getItemIDByName(Name)
         if ID is None:
-            logging.warning("need to implement request id by filename")
+            if paths[0] == self.get_AllDirName():
+                return None
+            if hasattr(self, "requestItemByfileName"):
+                item = self.requestItemByfileName(Name)
+                self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+                return item
+            else:
+                logging.warning("need to implement request id by filename")
+                if paths[0] == self.get_AllDirName():
+                    logging.warning("As a compromise, reload all items, this is slow!")
+                    items = self.api.getAllItems(max=self.config["ITEM_NUM_MAX_IN_DIR"])
+                    for item in items:
+                        self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+                    ID = self.pathCache.getItemIDByName(Name)
+                    if ID is None:
+                        logging.error(
+                            "item name {} not found. Consider increasing ITEM_NUM_MAX_IN_DIR or set it as -1".format(
+                                name
+                            )
+                        )
+                        return None
+                    else:
+                        return self.getItem_byCache(ID)
+                else:  # /TypeMarker/dirName/fileName
+                    aalbID = Dir_Alum_Abstract.getIDByShownName(
+                        provider=self, shownName=paths[1]
+                    )
+                    aalb = self.get_apiObj_byCacheOrRequest(
+                        TypeMarker=paths[0], ID=aalbID
+                    )
+                    Null = Dir_Alum_Abstract.cacheItemsInSelfDir_byRequest(
+                        provider=self, TypeMarker=paths[0], apiObj=aalb
+                    )
+                    ID = self.pathCache.getItemIDByName(Name)
+                    if ID is None:
+                        logging.error(
+                            "cannot load item information. Considering cd to root dir".format()
+                        )
+                        return None
+                    else:
+                        return self.getItem_byCache(ID)
         else:
-            return ID
+            return self.getItem_byCache(ID)
+
+    # ====================================================
+    # best to implement
+    #
+    # def requestItemByID(self,ID):
+    #     # return item
+
+    # def requestItemByfileName(self,fileName):
+    #     # return item
+    # ====================================================
 
     def getItem_byCache(self, ID):
         info = self.pathCache.getItemInfo(itemID=ID)
@@ -528,14 +574,18 @@ class baiduphoto(DAVProvider):
             return self.api.getOnlineItem_ByInfo(info=info)
 
     def get_AllDirName(self):
-        return "All(latest{})".format(int(self.config["ITEM_NUM_MAX_IN_DIR"]))
+        maxNum = int(self.config["ITEM_NUM_MAX_IN_DIR"])
+        if maxNum <= 0:
+            return "All"
+        else:
+            return "All(latest{})".format(maxNum)
 
     def get_resource_inst(self, path, environ):
         """Return info dictionary for path.
 
         See get_resource_inst()
         """
-        paths = path.split("/")[1:]
+        paths = path.strip("/").split("/")
         delimiter = self.getDelimiter()
         DirAllName = self.get_AllDirName()
 
@@ -550,90 +600,50 @@ class baiduphoto(DAVProvider):
         if path in ["/{}".format(DirAllName), "/{}/".format(DirAllName)]:
             return Dir_All(path=path, environ=environ)
 
-        if paths[0] == DirAllName and paths[1] != "":
-            itemName = paths[1]
-            itemID = self.getItem_byNameWithCache(itemName)
-            item = self.getItem_byCache(itemID)
+        if paths[0] == DirAllName and paths[1] != "":  # /All/filename.sufix
+            fileName = paths[1]
+            item = self.getItem_byNameWithCache(Name=fileName, paths=paths)
             return onlineItem(path=path, environ=environ, item=item)
 
         ########################################################
-        #           /Albums
+        #           /AbstractAlbum
+        #
+        # path = /TypeMarker
+        #      = /TypeMarker/AlbShownName
+        #      = /TypeMarker/AlbShownName/fileName
         ########################################################
-        if path in ["/Albums", "/Albums/"]:
-            return Dir_Albums(path=path, environ=environ)
-
-        if paths[0] == "Albums" and paths[1] != "":  # /Albums/*
-            albShowName = paths[1]  # <albName_D_ID>
-            albID = Dir_Album.getIDByShownName(provider=self, shownName=albShowName)
-            if albID is None:
+        if len(paths) == 1:
+            return Dir_TypeMarker_s(path=path, environ=environ, TypeMarker=paths[0])
+        elif len(paths) == 2:
+            ID = Dir_Alum_Abstract.getIDByShownName(provider=self, shownName=paths[1])
+            if ID is None:
+                return None
+            aalb = self.get_apiObj_byCacheOrRequest(TypeMarker=paths[0], ID=ID)
+            if aalb is None:
+                return
+            else:
+                return Dir_Alum_Abstract(
+                    path=path, environ=environ, TypeMarker=paths[0], apiObj=aalb
+                )
+        elif len(paths) == 3:
+            fileName = paths[2]
+            item = self.getItem_byNameWithCache(Name=fileName, paths=paths)
+            if item is None:
                 return None
             else:
-                alb = self.getAlumb_byCacheOrRequest(ID=albID)
-            if len(paths) == 2:  # /Albums/<albName_D_ID>
-                return Dir_Album(path=path, environ=environ, apiObj=alb)
-            elif paths[2] == "":  # /Albums/<albName_D_ID>/
-                if delimiter not in paths[1]:
-                    return None
-                else:
-                    return Dir_Album(path=path, environ=environ, apiObj=alb)
-            elif paths[2] != "":  # /Albums/<albName_D_ID>/<itemName.sufix>
-                itemID = onlineItem.getIDByShownName(self, paths[2])
-                if itemID is None:
-                    return None
-                else:
-                    item = self.getItem_byCache(ID=itemID)
-                    return onlineItemInAlbum(
-                        path=path, environ=environ, item=item, album=alb
-                    )
-
-        ########################################################
-        #           /Person
-        ########################################################
-        if path in ["/Person", "/Person/"]:
-            return Dir_Persons(path=path, environ=environ)
-
-        if paths[0] == "Person" and paths[1] != "":  # /Person/*
-            dirShowName = paths[1]  # <pername_D_ID>
-            personID = Dir_Person.getIDByShownName(provider=self, shownName=dirShowName)
-            if personID is None:
-                return None
-            else:
-                person = self.getPerson_byCacheOrRequest(ID=personID)
-            if len(paths) == 2:  # /Person/<name_D_ID>
-                return Dir_Person(path=path, environ=environ, apiObj=person)
-            elif paths[2] == "":  # /Person/<name_D_ID>/
-                if delimiter not in dirShowName:
-                    return None
-                else:
-                    return Dir_Person(path=path, environ=environ, apiObj=person)
-            elif paths[2] != "":  # /Person/<name_D_ID>/<itemName.sufix>
-                itemID = onlineItem.getIDByShownName(self, paths[2])
-                if itemID is None:
-                    return None
-                else:
-                    item = self.getItem_byCache(ID=itemID)
-                    return onlineItemInPerson(
-                        path=path, environ=environ, item=item, person=person
-                    )
-
-        # elif path=="/All":
-        # items = self.api.getAllItems()
-        # itemNames = []
-        # for item in items:
-        #     logging.debug(len(items))
-        #     self.pathCache.cacheItem(item)
-        #     itemNames.append( item.getID()+ "." + item.getName().split(".")[-1]   )
-        # return Directory(subNameList=itemNames,path=path,environ=environ)
-        #     return Directory(subNameList=["empty"],path=path,environ=environ)
-        # elif path == "/Albums":
-        #     print("here")
-        #     albs = self.api.getAlbumList()['items']
-        #     return Directory(subNameList=[alb.getName() for alb in albs],path=path,environ=environ)
-        # elif path == "/Albums/":
-        #     print("here")
-        #     albs = self.api.getAlbumList()['items']
-        #     return Directory(subNameList=[alb.getName() for alb in albs],path=path,environ=environ)
+                ID = Dir_Alum_Abstract.getIDByShownName(
+                    provider=self, shownName=paths[1]
+                )
+                aalb = self.get_apiObj_byCacheOrRequest(TypeMarker=paths[0], ID=ID)
+                return onlineItemInAAlbum(
+                    path=path,
+                    environ=environ,
+                    item=item,
+                    AbsAlbumType=paths[0],
+                    aalb=aalb,
+                )
         else:
-            print("else error")
+            logging.error("not implemented")
+
         print("if end error")
         return None
