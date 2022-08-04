@@ -54,7 +54,8 @@ class NoSQL:
             self.tables[table] = {}
 
     def dropTableIfExist(self, table):
-        del self.tables[table]
+        if self.isTableExist(table):
+            del self.tables[table]
 
     def deleteItemIfExist(self, table, key):
         del self.tables[table][key]
@@ -73,18 +74,19 @@ class NoSQL:
 class PathCache:
     # 测试发现文件名自动保持唯一，可作为唯一标识符
 
-    def __init__(self):
+    def __init__(self, AlbumTypes):
         self.nosql = NoSQL()
+        # self.AlbumTypes = AlbumTypes
 
-        DirTypes = ["Album", "Person"]
-        self.nosql.createTableIfNotExist(table="itemInfo")
+        DirTypes = AlbumTypes
+        self.nosql.createTableIfNotExist(table="Item")
         self.nosql.createTableIfNotExist(table="itemNameToID")
         for Dir in DirTypes:
             self.nosql.createTableIfNotExist(table=Dir)  # store info
             # self.nosql.createTableIfNotExists(table = Dir+"_list" ) #
 
     def cacheItem(self, item):
-        self.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+        self.cache_apiObj(TypeMarker="Item", apiObj=item)
         self.nosql.setValue(
             table="itemNameToID", key=item.getName(), value=item.getID()
         )
@@ -121,7 +123,7 @@ class PathCache:
         return self.nosql.getValueElseNone(table=table, key=ID)
 
     def getItemInfo(self, itemID):
-        return self.getapiObjInfo(TypeMarker="itemInfo", ID=itemID)
+        return self.getapiObjInfo(TypeMarker="Item", ID=itemID)
 
     def getItemIDByName(self, name):
         table = "itemNameToID"
@@ -131,7 +133,7 @@ class PathCache:
         table1 = DirType
         table2 = DirType + "_list_" + ID
         self.nosql.deleteItemIfExist(table=table1, key=ID)
-        self.dropTableIfExist(table=table2)
+        self.nosql.dropTableIfExist(table=table2)
 
 
 class onlineItem_New(DAVNonCollection):
@@ -262,11 +264,7 @@ class Dir_root(DAVCollection):
         """Return list of (direct) collection member names (UTF-8 byte strings).
         This method MUST be implemented.
         """
-        return [
-            "Album",
-            self.provider.get_AllDirName(),  # All (latest x)
-            "Person",
-        ]
+        return [self.provider.get_AllDirName()] + self.provider.getAlbumTypes()
 
 
 class Dir_All(DAVCollection):
@@ -276,8 +274,8 @@ class Dir_All(DAVCollection):
 
     def get_member_names(self):
         names = []
-        items = self.provider.api.getAllItems(
-            max=self.provider.config["ITEM_NUM_MAX_IN_DIR"]
+        items = self.provider.api.get_self_All(
+            typeName="Item", max=self.provider.config["ITEM_NUM_MAX_IN_DIR"]
         )
         for item in items:
             self.provider.pathCache.cacheItem(item)
@@ -294,12 +292,18 @@ class Dir_TypeMarker_s(DAVCollection):
         super().__init__(path, environ)
 
     def get_AbsAlbum_List(self):
-        if self.TypeMarker == "Album":
-            return self.provider.api.getAlbumList_All()
-        elif self.TypeMarker == "Person":
-            return self.provider.api.getAllPersonList()
+        MaxDir = self.provider.config["ABSALUM_MAX_IN_DIR"]
+        List = self.provider.api.get_self_All(typeName=self.TypeMarker, max=MaxDir)
+        if List is None:
+            return []
         else:
-            logging.error("undefined AbsAlbum type = {}".format(self.TypeMarker))
+            return List
+        # if self.TypeMarker == "Album":
+        #     return self.provider.api.getAlbumList_All()
+        # elif self.TypeMarker == "Person":
+        #     return self.provider.api.getAllPersonList()
+        # else:
+        #     logging.error("undefined AbsAlbum type = {}".format(self.TypeMarker))
 
     def get_member_names(self):
         delimiter = self.provider.getDelimiter()
@@ -351,7 +355,7 @@ class Dir_Alum_Abstract(DAVCollection):
     @staticmethod
     def cacheItemsInSelfDir_byRequest(provider, TypeMarker, apiObj):
         maxNum = provider.config["ITEM_NUM_MAX_IN_" + TypeMarker.upper()]
-        items = apiObj.getAllItems(max=maxNum)
+        items = apiObj.get_sub_All(max=maxNum)
         for item in items:
             provider.pathCache.cacheItem(item=item)
         return items
@@ -365,7 +369,7 @@ class Dir_Alum_Abstract(DAVCollection):
             items = self.cacheItemsInSelfDir_byRequest(
                 provider=self.provider, TypeMarker=self.TypeMarker, apiObj=self.apiObj
             )
-            # items = self.apiObj.getAllItems(max=maxNum)
+            # items = self.apiObj.get_sub_All(max=maxNum)
             # for item in items:
             #     self.provider.pathCache.cacheItem(item=item)
         else:
@@ -430,35 +434,57 @@ class Dir_Alum_Abstract(DAVCollection):
         )
 
     def get_display_name(self) -> str:
-        assert self.TypeMarker == "Album"
-        return self.apiObj.getName()
+        # if self.TypeMarker in ["Album","Location"]:
+        #     return self.apiObj.getName()
+        # else:
+        #     return self.name
+        objName = self.apiObj.getName()
+        if len(objName) == 0:
+            return self.name
+        else:
+            return objName
 
 
 class baiduphoto(DAVProvider):
     def __init__(self, config, api):
         super().__init__()
-        self.pathCache = PathCache()
+        self.pathCache = PathCache(AlbumTypes=self.getAlbumTypes())
         self.config = config
         self.api = api
 
     def getDelimiter(self):
         return self.config["DELIMITER"]
 
+    def getAlbumTypes(self):
+        return [
+            "Album",
+            "Person",
+            "Location",
+            "Thing",
+        ]
+
+        # self.api.get_self_All(typeName="",max=)
+
     def get_apiObj_byCacheOrRequest(self, TypeMarker, ID):
-        fun_ListAll = {
-            "itemInfo": self.api.getAllItems,
-            "Album": self.api.getAlbumList_All,
-            "Person": self.api.getAllPersonList,
-        }.get(TypeMarker, None)
+        # fun_ListAll = {
+        #     "Item": self.api.getAllItems,
+        #     "Album": self.api.getAlbumList_All,
+        #     "Person": self.api.getAllPersonList,
+        # }.get(TypeMarker, None)
+        fun_ListAll = lambda: self.api.get_self_All(typeName=TypeMarker)
+
         fun_Req = {
             "Album": self.api.getAlbum_ByID,
         }.get(TypeMarker, None)
         # --- load info into object
-        InfoloadFunc = {
-            "itemInfo": self.api.getOnlineItem_ByInfo,
-            "Album": self.api.getAlbum_ByInfo,
-            "Person": self.api.getPerson_ByInfo,
-        }.get(TypeMarker, None)
+        # InfoloadFunc = {
+        #     "Item": self.api.getOnlineItem_ByInfo,
+        #     "Album": self.api.getAlbum_ByInfo,
+        #     "Person": self.api.getPerson_ByInfo,
+        # }.get(TypeMarker, None)
+        InfoloadFunc = lambda info: self.api.loadSelfByInfo(
+            typeName=TypeMarker, info=info
+        )
         # --------------------------------------------------
         info = self.pathCache.getapiObjInfo(TypeMarker=TypeMarker, ID=ID)
         if info is None:
@@ -501,7 +527,7 @@ class baiduphoto(DAVProvider):
     #         logging.warning("As a compromise, reload all items, this is slow!")
     #         items = self.api.getAllItems()
     #         for item in items:
-    #             self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+    #             self.pathCache.cache_apiObj(TypeMarker="Item", apiObj=item)
     #         ID = self.pathCache.getItemIDByName(Name)
     #         if ID is None:
     #             logging.error(
@@ -516,15 +542,17 @@ class baiduphoto(DAVProvider):
                 return None
             if hasattr(self, "requestItemByfileName"):
                 item = self.requestItemByfileName(Name)
-                self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+                self.pathCache.cache_apiObj(TypeMarker="Item", apiObj=item)
                 return item
             else:
-                logging.warning("need to implement request id by filename")
+                logging.warning(
+                    "need to implement request id by filename, path=[{}]".format(paths)
+                )
                 if paths[0] == self.get_AllDirName():
                     logging.warning("As a compromise, reload all items, this is slow!")
                     items = self.api.getAllItems(max=self.config["ITEM_NUM_MAX_IN_DIR"])
                     for item in items:
-                        self.pathCache.cache_apiObj(TypeMarker="itemInfo", apiObj=item)
+                        self.pathCache.cache_apiObj(TypeMarker="Item", apiObj=item)
                     ID = self.pathCache.getItemIDByName(Name)
                     if ID is None:
                         logging.error(
@@ -580,16 +608,36 @@ class baiduphoto(DAVProvider):
         else:
             return "All(latest{})".format(maxNum)
 
+    @staticmethod
+    def matchFileNamePrefix(fileName):
+        blackList = [
+            ".DS_Store",  # macOS folder meta data
+            "Thumbs.db",  # Windows image previews
+            "._",  # macOS hidden data files
+        ]
+        for b in blackList:
+            l = len(b)
+            if fileName[:l] == b:
+                return True
+        return False
+
     def get_resource_inst(self, path, environ):
         """Return info dictionary for path.
 
         See get_resource_inst()
         """
+
         paths = path.strip("/").split("/")
         delimiter = self.getDelimiter()
         DirAllName = self.get_AllDirName()
 
         logging.debug("DAV path=" + "{} {}".format(path, paths))
+
+        ########################################################
+        #           filter
+        ########################################################
+        if self.matchFileNamePrefix(paths[-1]):
+            return None
 
         if path == "/":
             return Dir_root(path=path, environ=environ)
@@ -612,6 +660,9 @@ class baiduphoto(DAVProvider):
         #      = /TypeMarker/AlbShownName
         #      = /TypeMarker/AlbShownName/fileName
         ########################################################
+        if paths[0] not in self.getAlbumTypes():
+            return None
+
         if len(paths) == 1:
             return Dir_TypeMarker_s(path=path, environ=environ, TypeMarker=paths[0])
         elif len(paths) == 2:

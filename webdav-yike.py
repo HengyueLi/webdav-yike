@@ -7,6 +7,7 @@ import sys, os
 # sys.path.append(os.environ["PYLIB"])
 # sys.path.insert(0, os.path.join(os.environ["PROJECTS"], "20220312_baiduphoto"))
 # from LogConfig import LogConfig
+
 # LogConfig.set_logtoScreen("debug")
 
 
@@ -30,9 +31,12 @@ from yikeProvider import baiduphoto as Provider
 sysConfig_default = {
     "ALBUM_DELETE_WITHITEM": False,
     "ALBUM_ITEM_DELETE_WITH_ORIGIN": False,
+    "ABSALUM_MAX_IN_DIR": 0,  # 最大文件夹数
     "ITEM_NUM_MAX_IN_DIR": 999,
     "ITEM_NUM_MAX_IN_ALBUM": 999,
     "ITEM_NUM_MAX_IN_PERSON": 999,
+    "ITEM_NUM_MAX_IN_LOCATION": 999,
+    "ITEM_NUM_MAX_IN_THING": 999,
     "DELIMITER": "@",
 }
 
@@ -163,6 +167,13 @@ config.update(
             "user_mapping": user_mapping,
         },
         "verbose": 5,
+        "dir_browser": {
+            "ignore": [
+                ".DS_Store",  # macOS folder meta data
+                "Thumbs.db",  # Windows image previews
+                "._*",  # macOS hidden data files
+            ]
+        },
     }
 )
 
